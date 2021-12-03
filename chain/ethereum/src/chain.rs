@@ -1,5 +1,6 @@
 use anyhow::{Context, Error};
 use graph::blockchain::BlockchainKind;
+use graph::components::store::WritableStore;
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::firehose::endpoints::FirehoseNetworkEndpoints;
 use graph::prelude::{
@@ -24,7 +25,7 @@ use graph::{
     prelude::{
         async_trait, error, lazy_static, o, serde_json as json, web3::types::H256, BlockNumber,
         ChainStore, EthereumBlockWithCalls, Future01CompatExt, Logger, LoggerFactory,
-        MetricsRegistry, NodeId, SubgraphStore,
+        MetricsRegistry, NodeId,
     },
 };
 use prost::Message;
@@ -75,7 +76,6 @@ pub struct Chain {
     ancestor_count: BlockNumber,
     chain_store: Arc<dyn ChainStore>,
     call_cache: Arc<dyn EthereumCallCache>,
-    subgraph_store: Arc<dyn SubgraphStore>,
     chain_head_update_listener: Arc<dyn ChainHeadUpdateListener>,
     reorg_threshold: BlockNumber,
     pub is_ingestible: bool,
@@ -95,7 +95,6 @@ impl Chain {
         registry: Arc<dyn MetricsRegistry>,
         chain_store: Arc<dyn ChainStore>,
         call_cache: Arc<dyn EthereumCallCache>,
-        subgraph_store: Arc<dyn SubgraphStore>,
         firehose_endpoints: FirehoseNetworkEndpoints,
         eth_adapters: EthereumNetworkAdapters,
         chain_head_update_listener: Arc<dyn ChainHeadUpdateListener>,
@@ -113,7 +112,6 @@ impl Chain {
             ancestor_count,
             chain_store,
             call_cache,
-            subgraph_store,
             chain_head_update_listener,
             reorg_threshold,
             is_ingestible,
@@ -123,6 +121,7 @@ impl Chain {
     async fn new_polling_block_stream(
         &self,
         deployment: DeploymentLocator,
+        writable: Arc<dyn WritableStore>,
         start_blocks: Vec<BlockNumber>,
         adapter: Arc<TriggersAdapter>,
         filter: Arc<TriggerFilter>,
@@ -134,12 +133,6 @@ impl Chain {
             .subgraph_logger(&deployment)
             .new(o!("component" => "BlockStream"));
         let chain_store = self.chain_store().clone();
-        let writable = self
-            .subgraph_store
-            .cheap_clone()
-            .writable(logger.clone(), deployment.id)
-            .await
-            .with_context(|| format!("no store for deployment `{}`", deployment.hash))?;
         let chain_head_update_stream = self
             .chain_head_update_listener
             .subscribe(self.name.clone(), logger.clone());
@@ -178,6 +171,7 @@ impl Chain {
     async fn new_firehose_block_stream(
         &self,
         deployment: DeploymentLocator,
+        store: &dyn WritableStore,
         start_blocks: Vec<BlockNumber>,
         adapter: Arc<TriggersAdapter>,
         filter: Arc<TriggerFilter>,
@@ -193,12 +187,7 @@ impl Chain {
             .new(o!("component" => "FirehoseBlockStream"));
 
         let firehose_mapper = Arc::new(FirehoseMapper {});
-        let firehose_cursor = self
-            .subgraph_store
-            .cheap_clone()
-            .writable(logger.clone(), deployment.id)
-            .await?
-            .block_cursor()?;
+        let firehose_cursor = store.block_cursor()?;
 
         Ok(Box::new(FirehoseBlockStream::new(
             firehose_endpoint,
@@ -282,6 +271,7 @@ impl Blockchain for Chain {
     async fn new_block_stream(
         &self,
         deployment: DeploymentLocator,
+        writable: Arc<dyn WritableStore>,
         start_blocks: Vec<BlockNumber>,
         filter: Arc<TriggerFilter>,
         metrics: Arc<BlockStreamMetrics>,
@@ -301,11 +291,18 @@ impl Blockchain for Chain {
             ));
 
         if self.firehose_endpoints.len() > 0 {
-            self.new_firehose_block_stream(deployment, start_blocks, adapter, filter)
-                .await
+            self.new_firehose_block_stream(
+                deployment,
+                writable.as_ref(),
+                start_blocks,
+                adapter,
+                filter,
+            )
+            .await
         } else {
             self.new_polling_block_stream(
                 deployment,
+                writable,
                 start_blocks,
                 adapter,
                 filter,

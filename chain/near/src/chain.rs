@@ -1,5 +1,6 @@
 use graph::blockchain::BlockchainKind;
 use graph::cheap_clone::CheapClone;
+use graph::components::store::WritableStore;
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::firehose::endpoints::FirehoseNetworkEndpoints;
 use graph::prelude::StopwatchMetrics;
@@ -16,9 +17,7 @@ use graph::{
     components::store::DeploymentLocator,
     firehose::bstream,
     log::factory::{ComponentLoggerConfig, ElasticComponentLoggerConfig},
-    prelude::{
-        async_trait, o, BlockNumber, ChainStore, Error, Logger, LoggerFactory, SubgraphStore,
-    },
+    prelude::{async_trait, o, BlockNumber, ChainStore, Error, Logger, LoggerFactory},
 };
 use prost::Message;
 use std::sync::Arc;
@@ -39,7 +38,6 @@ pub struct Chain {
     name: String,
     firehose_endpoints: Arc<FirehoseNetworkEndpoints>,
     chain_store: Arc<dyn ChainStore>,
-    subgraph_store: Arc<dyn SubgraphStore>,
 }
 
 impl std::fmt::Debug for Chain {
@@ -53,7 +51,6 @@ impl Chain {
         logger_factory: LoggerFactory,
         name: String,
         chain_store: Arc<dyn ChainStore>,
-        subgraph_store: Arc<dyn SubgraphStore>,
         firehose_endpoints: FirehoseNetworkEndpoints,
     ) -> Self {
         Chain {
@@ -61,7 +58,6 @@ impl Chain {
             name,
             firehose_endpoints: Arc::new(firehose_endpoints),
             chain_store,
-            subgraph_store,
         }
     }
 }
@@ -108,6 +104,7 @@ impl Blockchain for Chain {
     async fn new_block_stream(
         &self,
         deployment: DeploymentLocator,
+        store: Arc<dyn WritableStore>,
         start_blocks: Vec<BlockNumber>,
         filter: Arc<TriggerFilter>,
         metrics: Arc<BlockStreamMetrics>,
@@ -133,12 +130,7 @@ impl Blockchain for Chain {
             .new(o!("component" => "FirehoseBlockStream"));
 
         let firehose_mapper = Arc::new(FirehoseMapper {});
-        let firehose_cursor = self
-            .subgraph_store
-            .cheap_clone()
-            .writable(logger.clone(), deployment.id)
-            .await?
-            .block_cursor()?;
+        let firehose_cursor = store.block_cursor()?;
 
         Ok(Box::new(FirehoseBlockStream::new(
             firehose_endpoint,

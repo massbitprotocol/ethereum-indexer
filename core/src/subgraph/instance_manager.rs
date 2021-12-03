@@ -30,6 +30,8 @@ use std::time::{Duration, Instant};
 use tokio::task;
 
 const MINUTE: Duration = Duration::from_secs(60);
+const THRESHOLD: Duration = Duration::from_secs(30);
+// const THRESHOLD: Duration = Duration::from_secs(60 * 5);
 
 lazy_static! {
     /// Size limit of the entity LFU cache, in bytes.
@@ -468,8 +470,9 @@ where
     let store_for_err = ctx.inputs.store.cheap_clone();
     let logger = ctx.state.logger.cheap_clone();
     let id_for_err = ctx.inputs.deployment.hash.clone();
-    let mut should_try_unfail_deterministic = true;
+    let mut first_run = true;
     let mut should_try_unfail_non_deterministic = true;
+    let mut skip_pointer_updates_timer = Instant::now();
 
     // Exponential backoff that starts with two minutes and keeps
     // increasing its timeout exponentially until it reaches the ceiling.
@@ -602,6 +605,32 @@ where
                 subgraph_metrics
                     .block_trigger_count
                     .observe(block.trigger_count() as f64);
+            } else {
+                info!(&logger, "NO TRIGGERS BOIZZZZ: {}", block.trigger_count());
+            }
+
+            let has_no_triggers_in_block = block.trigger_count() == 0;
+
+            // Since last update of empty block.
+            let time_elapsed = skip_pointer_updates_timer.elapsed();
+
+            let threshold_has_passed =
+                // For every THRESHOLD period amount of time, a pointer update should happen.
+                THRESHOLD.as_secs().checked_div(time_elapsed.as_secs()) == Some(0);
+
+            let should_skip_empty_block =
+                first_run || (has_no_triggers_in_block && threshold_has_passed);
+
+            if should_skip_empty_block {
+                info!(&logger, "SKIPPING BLOCK: {}", block_ptr);
+
+                skip_pointer_updates_timer = Instant::now();
+                continue;
+            } else {
+                info!(
+                    &logger,
+                    "DIDN'T SKIP BLOCK: {}, time elapsed: {:?}", block_ptr, time_elapsed
+                );
             }
 
             let start = Instant::now();
@@ -612,8 +641,8 @@ where
             // deterministic.
             //
             // As an optimization we check this only on the first run.
-            if should_try_unfail_deterministic {
-                should_try_unfail_deterministic = false;
+            if first_run {
+                first_run = false;
 
                 if let Some(current_ptr) = ctx.inputs.store.block_ptr()? {
                     if let Some(parent_ptr) =

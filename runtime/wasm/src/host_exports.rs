@@ -66,7 +66,6 @@ pub struct HostExports<C: Blockchain> {
     causality_region: String,
     templates: Arc<Vec<C::DataSourceTemplate>>,
     pub(crate) link_resolver: Arc<dyn LinkResolver>,
-    store: Arc<dyn SubgraphStore>,
     ens_lookup: Arc<dyn EnsLookup>,
 }
 
@@ -77,7 +76,6 @@ impl<C: Blockchain> HostExports<C> {
         data_source_network: String,
         templates: Arc<Vec<C::DataSourceTemplate>>,
         link_resolver: Arc<dyn LinkResolver>,
-        store: Arc<dyn SubgraphStore>,
         ens_lookup: Arc<dyn EnsLookup>,
     ) -> Self {
         Self {
@@ -90,7 +88,6 @@ impl<C: Blockchain> HostExports<C> {
             data_source_network,
             templates,
             link_resolver,
-            store,
             ens_lookup,
         }
     }
@@ -163,29 +160,17 @@ impl<C: Blockchain> HostExports<C> {
         }
 
         id_insert_section.end();
-        let validation_section = stopwatch.start_section("host_export_store_set__validation");
+        let validation_section = stopwatch.start_section("host_export_store_set");
         let key = EntityKey {
             subgraph_id: self.subgraph_id.clone(),
             entity_type: EntityType::new(entity_type),
             entity_id,
         };
-        let entity = Entity::from(data);
-        let schema = self.store.input_schema(&self.subgraph_id)?;
-        let is_valid = entity.validate(&schema.document, &key).is_ok();
-        state.entity_cache.set(key.clone(), entity);
 
+        let entity = Entity::from(data);
+        state.entity_cache.set(key.clone(), entity)?;
         validation_section.end();
-        // Validate the changes against the subgraph schema.
-        // If the set of fields we have is already valid, avoid hitting the DB.
-        if !is_valid {
-            stopwatch.start_section("host_export_store_set__post_validation");
-            let entity = state
-                .entity_cache
-                .get(&key)
-                .map_err(|e| HostExportError::Unknown(e.into()))?
-                .expect("we just stored this entity");
-            entity.validate(&schema.document, &key)?;
-        }
+
         Ok(())
     }
 

@@ -1111,6 +1111,7 @@ struct WritableStore {
     store: WritableSubgraphStore,
     writable: Arc<DeploymentStore>,
     site: Arc<Site>,
+    input_schema: Arc<Schema>,
 }
 
 impl WritableStore {
@@ -1124,11 +1125,13 @@ impl WritableStore {
     ) -> Result<Self, StoreError> {
         let store = WritableSubgraphStore(subgraph_store.clone());
         let writable = subgraph_store.for_site(site.as_ref())?.clone();
+        let input_schema = subgraph_store.input_schema(&site.deployment)?;
         Ok(Self {
             logger,
             store,
             writable,
             site,
+            input_schema,
         })
     }
 
@@ -1363,6 +1366,10 @@ impl WritableStoreTrait for WritableStore {
             self.writable.health(id).await.map(Into::into)
         })
         .await
+    }
+
+    fn input_schema(&self) -> Arc<Schema> {
+        self.input_schema.clone()
     }
 }
 

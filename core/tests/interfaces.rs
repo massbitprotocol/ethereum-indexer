@@ -1424,7 +1424,7 @@ async fn recursive_fragment() {
         .await
         .unwrap();
     let data = res.to_result().unwrap_err()[0].to_string();
-    assert_eq!(data, "query has fragment cycle including `FooFrag`");
+    assert_eq!(data, "Cannot spread fragment \"FooFrag\" within itself.");
 
     let co_recursive = "
         query {

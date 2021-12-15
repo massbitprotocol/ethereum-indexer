@@ -1,6 +1,6 @@
 use crate::ext::futures::FutureExtension;
 use futures03::{Future, FutureExt, TryFutureExt};
-use slog::{debug, trace, warn, Logger};
+use slog::{debug, warn, Logger};
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -169,7 +169,7 @@ where
         let limit_opt = self.inner.limit.unwrap(&operation_name, "limit");
         let timeout = self.timeout;
 
-        trace!(logger, "Run with retry: {}", operation_name);
+        // trace!(logger, "Run with retry: {}", operation_name);
 
         run_retry(
             operation_name,
@@ -209,7 +209,7 @@ impl<I, E> RetryConfigNoTimeout<I, E> {
         let warn_after = self.inner.warn_after;
         let limit_opt = self.inner.limit.unwrap(&operation_name, "limit");
 
-        trace!(logger, "Run with retry: {}", operation_name);
+        // trace!(logger, "Run with retry: {}", operation_name);
 
         run_retry(
             operation_name,

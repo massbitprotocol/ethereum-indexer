@@ -353,9 +353,9 @@ impl EthereumAdapter {
             let end = (start + step_size - 1).min(to);
             let new_start = end + 1;
             if start == end {
-                debug!(logger, "Requesting traces for block {}", start);
+                // debug!(logger, "Requesting traces for block {}", start);
             } else {
-                debug!(logger, "Requesting traces for blocks [{}, {}]", start, end);
+                // debug!(logger, "Requesting traces for blocks [{}, {}]", start, end);
             }
             Some(futures::future::ok((
                 eth.clone()
@@ -424,10 +424,10 @@ impl EthereumAdapter {
                 }
 
                 let end = (start + step).min(to);
-                debug!(
-                    logger,
-                    "Requesting logs for blocks [{}, {}], {}", start, end, filter
-                );
+                // debug!(
+                //     logger,
+                //     "Requesting logs for blocks [{}, {}], {}", start, end, filter
+                // );
                 let res = eth
                     .logs_with_sigs(
                         logger.cheap_clone(),
@@ -835,7 +835,7 @@ impl EthereumAdapter {
     ) -> Box<dyn Future<Item = Vec<BlockPtr>, Error = Error> + Send> {
         // Currently we can't go to the DB for this because there might be duplicate entries for
         // the same block number.
-        debug!(&logger, "Requesting hashes for blocks [{}, {}]", from, to);
+        // debug!(&logger, "Requesting hashes for blocks [{}, {}]", from, to);
         Box::new(
             self.load_block_ptrs_rpc(logger, (from..=to).collect())
                 .collect(),
@@ -1335,7 +1335,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
         );
 
         // Return a stream that lazily loads batches of blocks.
-        debug!(logger, "Requesting {} block(s)", missing_blocks.len());
+        // debug!(logger, "Requesting {} block(s)", missing_blocks.len());
         Box::new(
             self.load_blocks_rpc(logger.clone(), missing_blocks)
                 .collect()

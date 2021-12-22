@@ -6,6 +6,7 @@ pub mod block_ingestor;
 pub mod block_stream;
 pub mod firehose_block_ingestor;
 pub mod firehose_block_stream;
+pub mod mock;
 pub mod polling_block_stream;
 mod types;
 
@@ -81,13 +82,13 @@ pub trait Blockchain: Debug + Sized + Send + Sync + Unpin + 'static {
     type DataSource: DataSource<Self>;
     type UnresolvedDataSource: UnresolvedDataSource<Self>;
 
-    type DataSourceTemplate: DataSourceTemplate<Self>;
+    type DataSourceTemplate: DataSourceTemplate<Self> + Clone;
     type UnresolvedDataSourceTemplate: UnresolvedDataSourceTemplate<Self>;
 
     type TriggersAdapter: TriggersAdapter<Self>;
 
     /// Trigger data as parsed from the triggers adapter.
-    type TriggerData: TriggerData + Ord;
+    type TriggerData: TriggerData + Ord + Send + Sync + Clone;
 
     /// Decoded trigger ready to be processed by the mapping.
     /// New implementations should have this be the same as `TriggerData`.
@@ -267,7 +268,7 @@ pub trait UnresolvedDataSourceTemplate<C: Blockchain>:
     ) -> Result<C::DataSourceTemplate, anyhow::Error>;
 }
 
-pub trait DataSourceTemplate<C: Blockchain>: Send + Sync + Clone + Debug {
+pub trait DataSourceTemplate<C: Blockchain>: Send + Sync + Debug {
     fn api_version(&self) -> semver::Version;
     fn runtime(&self) -> &[u8];
     fn name(&self) -> &str;

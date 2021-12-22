@@ -660,7 +660,7 @@ impl<C: Blockchain> HostExports<C> {
 
         // Remember that we need to create this data source
         state.push_created_data_source(DataSourceTemplateInfo {
-            template,
+            template: template.clone(),
             params,
             context,
             creation_block,

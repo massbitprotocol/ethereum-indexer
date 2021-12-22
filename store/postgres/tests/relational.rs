@@ -1071,7 +1071,7 @@ fn check_find() {
             .check(
                 vec!["2", "1"],
                 user_query()
-                    .filter(EntityFilter::LessThan("name".to_owned(), "Kuni".into()))
+                    .filter(EntityFilter::LessThan("name".to_owned(), "Kundi".into()))
                     .asc("name"),
             )
             .check(

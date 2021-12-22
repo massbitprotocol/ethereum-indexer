@@ -1048,6 +1048,7 @@ mod tests {
                 "pets_not",
                 "pets_contains",
                 "pets_not_contains",
+                "pets_",
                 "favoriteFurType",
                 "favoriteFurType_not",
                 "favoriteFurType_in",
@@ -1066,6 +1067,7 @@ mod tests {
                 "favoritePet_not_starts_with",
                 "favoritePet_ends_with",
                 "favoritePet_not_ends_with",
+                "favoritePet_",
             ]
             .iter()
             .map(ToString::to_string)

@@ -952,12 +952,20 @@ trait EasyOrder {
 impl EasyOrder for EntityQuery {
     fn asc(self, attr: &str) -> Self {
         // The ValueType doesn't matter since relational layouts ignore it
-        self.order(EntityOrder::Ascending(attr.to_owned(), ValueType::String, None))
+        self.order(EntityOrder::Ascending(
+            attr.to_owned(),
+            ValueType::String,
+            None,
+        ))
     }
 
     fn desc(self, attr: &str) -> Self {
         // The ValueType doesn't matter since relational layouts ignore it
-        self.order(EntityOrder::Descending(attr.to_owned(), ValueType::String, None))
+        self.order(EntityOrder::Descending(
+            attr.to_owned(),
+            ValueType::String,
+            None,
+        ))
     }
 
     fn unordered(self) -> Self {

@@ -271,6 +271,7 @@ async fn check_graft(
     .order(EntityOrder::Descending(
         "name".to_string(),
         ValueType::String,
+        None,
     ));
 
     let entities = store

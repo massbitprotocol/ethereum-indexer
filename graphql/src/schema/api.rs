@@ -353,7 +353,7 @@ fn field_enum_values_from_child_entity(
                             .map(|f| EnumValue {
                                 position: Pos::default(),
                                 description: None,
-                                name: format!("{}_{}", field.name, f.name),
+                                name: format!("{}__{}", field.name, f.name),
                                 directives: vec![],
                             })
                             .collect()

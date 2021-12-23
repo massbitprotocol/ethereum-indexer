@@ -337,9 +337,9 @@ fn build_order_by(
     }
 }
 
-/// Kamil: I don't like it... What if we have `_` in the field name?
+/// Kamil: I don't like it... What if we have `_` in the field name? For now I will use double underscore
 fn parse_field_as_order(field_name: &String) -> (&str, Option<&str>) {
-    let mut field_name_parts = field_name.split('_');
+    let mut field_name_parts = field_name.split("__");
     (
         field_name_parts.next().expect("it should never happen"),
         field_name_parts.next(),

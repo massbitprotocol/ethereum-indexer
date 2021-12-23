@@ -2379,11 +2379,9 @@ impl<'a> SortKey<'a> {
                 direction,
             } => {
                 let root_prefix = "c.";
-                let mut prefix = root_prefix.to_string();
-
-                if let Some(tjc) = table_join_collection {
-                    prefix = format!("{}.", tjc.get_prefix(table));
-                }
+                let prefix = table_join_collection
+                    .map(|tjc| format!("{}.", tjc.get_prefix(table)))
+                    .unwrap_or(root_prefix.to_string());
 
                 out.push_sql("order by ");
 

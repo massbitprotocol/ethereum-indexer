@@ -52,14 +52,14 @@ pub(crate) fn build_query<'a>(
         query = query.filter(filter);
     }
     let order = match (
-        build_order_by(entity, field)?,
+        build_order_by(entity, field, schema)?,
         build_order_direction(field)?,
     ) {
-        (Some((attr, value_type)), OrderDirection::Ascending) => {
-            EntityOrder::Ascending(attr, value_type)
+        (Some((attr, value_type, entity_type)), OrderDirection::Ascending) => {
+            EntityOrder::Ascending(attr, value_type, entity_type)
         }
-        (Some((attr, value_type)), OrderDirection::Descending) => {
-            EntityOrder::Descending(attr, value_type)
+        (Some((attr, value_type, entity_type)), OrderDirection::Descending) => {
+            EntityOrder::Descending(attr, value_type, entity_type)
         }
         (None, _) => EntityOrder::Default,
     };
@@ -274,21 +274,61 @@ fn list_values(value: Value, filter_type: &str) -> Result<Vec<Value>, QueryExecu
 fn build_order_by(
     entity: ObjectOrInterface,
     field: &a::Field,
-) -> Result<Option<(String, ValueType)>, QueryExecutionError> {
+    schema: &ApiSchema,
+) -> Result<Option<(String, ValueType, Option<EntityType>)>, QueryExecutionError> {
     match field.argument_value("orderBy") {
-        Some(r::Value::Enum(name)) => {
-            let field = sast::get_field(entity, name).ok_or_else(|| {
-                QueryExecutionError::EntityFieldError(entity.name().to_owned(), name.clone())
-            })?;
-            sast::get_field_value_type(&field.field_type)
-                .map(|value_type| Some((name.to_owned(), value_type)))
-                .map_err(|_| {
-                    QueryExecutionError::OrderByNotSupportedError(
-                        entity.name().to_owned(),
-                        name.clone(),
-                    )
-                })
-        }
+        Some(r::Value::Enum(name)) => match parse_field_as_order(name) {
+            (_, None) => {
+                let field = sast::get_field(entity, name).ok_or_else(|| {
+                    QueryExecutionError::EntityFieldError(entity.name().to_owned(), name.clone())
+                })?;
+                sast::get_field_value_type(&field.field_type)
+                    .map(|value_type| Some((name.to_owned(), value_type, None)))
+                    .map_err(|_| {
+                        QueryExecutionError::OrderByNotSupportedError(
+                            entity.name().to_owned(),
+                            name.clone(),
+                        )
+                    })
+            }
+            (field_name, Some(child_field_name)) => {
+                let parent_field =
+                    sast::get_field(entity, &field_name.to_string()).ok_or_else(|| {
+                        QueryExecutionError::EntityFieldError(
+                            entity.name().to_owned(),
+                            field_name.to_string(),
+                        )
+                    })?;
+                let child_type_name = resolve_type_name(&parent_field.field_type);
+                let child_entity = schema
+                    .object_or_interface(child_type_name.as_str())
+                    .ok_or_else(|| QueryExecutionError::NamedTypeError(child_type_name.clone()))?;
+
+                let child_field = child_entity
+                    .field(&child_field_name.to_string())
+                    .ok_or_else(|| {
+                        QueryExecutionError::EntityFieldError(
+                            child_type_name.clone(),
+                            child_field_name.to_string(),
+                        )
+                    })?;
+
+                sast::get_field_value_type(&child_field.field_type)
+                    .map(|value_type| {
+                        Some((
+                            child_field_name.to_string(),
+                            value_type,
+                            Some(EntityType::new(child_type_name.clone())),
+                        ))
+                    })
+                    .map_err(|_| {
+                        QueryExecutionError::OrderByNotSupportedError(
+                            child_type_name.clone(),
+                            child_field_name.to_string(),
+                        )
+                    })
+            }
+        },
         _ => match field.argument_value("text") {
             Some(r::Value::Object(filter)) => build_fulltext_order_by_from_object(filter),
             None => Ok(None),
@@ -297,14 +337,23 @@ fn build_order_by(
     }
 }
 
+/// Kamil: I don't like it... What if we have `_` in the field name?
+fn parse_field_as_order(field_name: &String) -> (&str, Option<&str>) {
+    let mut field_name_parts = field_name.split('_');
+    (
+        field_name_parts.next().expect("it should never happen"),
+        field_name_parts.next(),
+    )
+}
+
 fn build_fulltext_order_by_from_object(
     object: &Object,
-) -> Result<Option<(String, ValueType)>, QueryExecutionError> {
+) -> Result<Option<(String, ValueType, Option<EntityType>)>, QueryExecutionError> {
     object.iter().next().map_or(
         Err(QueryExecutionError::FulltextQueryRequiresFilter),
         |(key, value)| {
             if let r::Value::String(_) = value {
-                Ok(Some((key.clone(), ValueType::String)))
+                Ok(Some((key.clone(), ValueType::String, None)))
             } else {
                 Err(QueryExecutionError::FulltextQueryRequiresFilter)
             }
@@ -601,7 +650,7 @@ mod tests {
             )
             .unwrap()
             .order,
-            EntityOrder::Ascending("name".to_string(), ValueType::String)
+            EntityOrder::Ascending("name".to_string(), ValueType::String, None)
         );
 
         let field = default_field_with("orderBy", r::Value::Enum("email".to_string()));
@@ -618,7 +667,7 @@ mod tests {
             )
             .unwrap()
             .order,
-            EntityOrder::Ascending("email".to_string(), ValueType::String)
+            EntityOrder::Ascending("email".to_string(), ValueType::String, None)
         );
     }
 
@@ -680,7 +729,7 @@ mod tests {
             )
             .unwrap()
             .order,
-            EntityOrder::Ascending("name".to_string(), ValueType::String)
+            EntityOrder::Ascending("name".to_string(), ValueType::String, None)
         );
 
         let field = default_field_with_vec(vec![
@@ -700,7 +749,7 @@ mod tests {
             )
             .unwrap()
             .order,
-            EntityOrder::Descending("name".to_string(), ValueType::String)
+            EntityOrder::Descending("name".to_string(), ValueType::String, None)
         );
 
         let field = default_field_with_vec(vec![
@@ -723,7 +772,7 @@ mod tests {
             )
             .unwrap()
             .order,
-            EntityOrder::Ascending("name".to_string(), ValueType::String)
+            EntityOrder::Ascending("name".to_string(), ValueType::String, None)
         );
 
         // No orderBy -> EntityOrder::Default

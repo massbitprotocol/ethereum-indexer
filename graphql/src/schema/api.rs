@@ -298,16 +298,7 @@ fn add_order_by_type(
                 description: None,
                 name: type_name,
                 directives: vec![],
-                values: fields
-                    .iter()
-                    .map(|field| &field.name)
-                    .map(|name| EnumValue {
-                        position: Pos::default(),
-                        description: None,
-                        name: name.to_owned(),
-                        directives: vec![],
-                    })
-                    .collect(),
+                values: field_enum_values(schema, fields)?,
             });
             let def = Definition::TypeDefinition(typedef);
             schema.definitions.push(def);
@@ -315,6 +306,69 @@ fn add_order_by_type(
         Some(_) => return Err(APISchemaError::TypeExists(type_name)),
     }
     Ok(())
+}
+
+/// Generates enum values for the given set of fields.
+fn field_enum_values(
+    schema: &Document,
+    fields: &[Field],
+) -> Result<Vec<EnumValue>, APISchemaError> {
+    // if field has no @derivedFrom and is ObjectType or InterfaceType, extend
+    let mut enum_values = vec![];
+    for field in fields {
+        enum_values.push(EnumValue {
+            position: Pos::default(),
+            description: None,
+            name: field.name.to_owned(),
+            directives: vec![],
+        });
+        enum_values.extend(field_enum_values_from_child_entity(
+            schema,
+            field,
+            &field.field_type,
+        )?);
+    }
+    Ok(enum_values)
+}
+
+fn field_enum_values_from_child_entity(
+    schema: &Document,
+    field: &Field,
+    field_type: &Type,
+) -> Result<Vec<EnumValue>, APISchemaError> {
+    match field_type {
+        Type::NamedType(ref name) => {
+            let named_type = schema
+                .get_named_type(name)
+                .ok_or_else(|| APISchemaError::TypeNotFound(name.clone()))?;
+            Ok(match named_type {
+                TypeDefinition::Object(ot) => {
+                    // Only add enum values for object and interface fields
+                    // if they are not @derivedFrom
+                    if ast::get_derived_from_directive(field).is_some() {
+                        vec![]
+                    } else {
+                        ot.fields
+                            .iter()
+                            .map(|f| EnumValue {
+                                position: Pos::default(),
+                                description: None,
+                                name: format!("{}_{}", field.name, f.name),
+                                directives: vec![],
+                            })
+                            .collect()
+                    }
+                }
+                // sorting for interfaces is not supported yet
+                // hard to pick correct table and pass the EntityType to EntityOrder::Ascending(EntityType)
+                _ => vec![],
+            })
+        }
+        Type::ListType(ref t) => {
+            Ok(field_enum_values_from_child_entity(schema, field, t).unwrap_or(vec![]))
+        }
+        Type::NonNullType(ref t) => field_enum_values_from_child_entity(schema, field, t),
+    }
 }
 
 /// Adds a `<type_name>_filter` enum type for the given fields to the schema.

@@ -1781,7 +1781,7 @@ impl<'a> ParentLimit<'a> {
     fn restrict(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
         if let ParentLimit::Ranked(sort_key, range) = self {
             out.push_sql(" ");
-            sort_key.order_by(out, None)?;
+            sort_key.order_by(out, None, None)?;
             range.walk_ast(out.reborrow())?;
         }
         Ok(())
@@ -2233,6 +2233,7 @@ pub enum SortKey<'a> {
     IdDesc,
     /// Order by some other column; `column` will never be `id`
     Key {
+        table: &'a Table,
         column: &'a Column,
         value: Option<&'a str>,
         direction: &'static str,
@@ -2242,6 +2243,7 @@ pub enum SortKey<'a> {
 impl<'a> SortKey<'a> {
     fn new(
         order: EntityOrder,
+        layout: &'a Layout,
         table: &'a Table,
         filter: Option<&'a EntityFilter>,
     ) -> Result<Self, QueryExecutionError> {
@@ -2249,11 +2251,18 @@ impl<'a> SortKey<'a> {
         const DESC: &str = "desc";
 
         fn with_key<'a>(
+            layout: &'a Layout,
             table: &'a Table,
+            entity_type: Option<EntityType>,
             attribute: String,
             filter: Option<&'a EntityFilter>,
             direction: &'static str,
         ) -> Result<SortKey<'a>, QueryExecutionError> {
+            let table = match entity_type {
+                Some(entity_type) => layout.table_for_entity(&entity_type)?,
+                None => table,
+            };
+
             let column = table.column_for_field(&attribute)?;
             if column.is_fulltext() {
                 match filter {
@@ -2262,6 +2271,7 @@ impl<'a> SortKey<'a> {
                             let sort_value = value.as_str();
 
                             Ok(SortKey::Key {
+                                table,
                                 column,
                                 value: sort_value,
                                 direction,
@@ -2279,6 +2289,7 @@ impl<'a> SortKey<'a> {
                 }
             } else {
                 Ok(SortKey::Key {
+                    table,
                     column,
                     value: None,
                     direction,
@@ -2287,8 +2298,12 @@ impl<'a> SortKey<'a> {
         }
 
         match order {
-            EntityOrder::Ascending(attr, _) => with_key(table, attr, filter, ASC),
-            EntityOrder::Descending(attr, _) => with_key(table, attr, filter, DESC),
+            EntityOrder::Ascending(attr, _, entity_type) => {
+                with_key(layout, table, entity_type, attr, filter, ASC)
+            }
+            EntityOrder::Descending(attr, _, entity_type) => {
+                with_key(layout, table, entity_type, attr, filter, DESC)
+            }
             EntityOrder::Default => Ok(SortKey::IdAsc),
             EntityOrder::Unordered => Ok(SortKey::None),
         }
@@ -2306,6 +2321,7 @@ impl<'a> SortKey<'a> {
                 Ok(())
             }
             SortKey::Key {
+                table: _,
                 column,
                 value: _,
                 direction: _,
@@ -2322,7 +2338,12 @@ impl<'a> SortKey<'a> {
 
     /// Generate
     ///   order by [name direction], id
-    fn order_by(&self, out: &mut AstPass<Pg>, prefix: Option<&str>) -> QueryResult<()> {
+    fn order_by(
+        &self,
+        out: &mut AstPass<Pg>,
+        prefix: Option<&str>,
+        table_join_collection: Option<&TableJoinCollection>,
+    ) -> QueryResult<()> {
         let prefix = prefix.unwrap_or("");
 
         match self {
@@ -2352,12 +2373,22 @@ impl<'a> SortKey<'a> {
                 Ok(())
             }
             SortKey::Key {
+                table,
                 column,
                 value,
                 direction,
             } => {
+                let root_prefix = "c.";
+                let mut prefix = root_prefix.to_string();
+
+                if let Some(tjc) = table_join_collection {
+                    prefix = format!("{}.", tjc.get_prefix(table));
+                }
+
                 out.push_sql("order by ");
-                SortKey::sort_expr(column, value, direction, out)
+
+                // Kamil: it's hardcoded but I think it should be...
+                SortKey::sort_expr(column, value, root_prefix, prefix.as_str(), direction, out)
             }
         }
     }
@@ -2378,12 +2409,13 @@ impl<'a> SortKey<'a> {
                 Ok(())
             }
             SortKey::Key {
+                table: _,
                 column,
                 value,
                 direction,
             } => {
                 out.push_sql("order by g$parent_id, ");
-                SortKey::sort_expr(column, value, direction, out)
+                SortKey::sort_expr(column, value, "", "", direction, out)
             }
         }
     }
@@ -2393,6 +2425,8 @@ impl<'a> SortKey<'a> {
     fn sort_expr(
         column: &Column,
         value: &Option<&str>,
+        root_prefix: &str,
+        prefix: &str,
         direction: &str,
         out: &mut AstPass<Pg>,
     ) -> QueryResult<()> {
@@ -2419,6 +2453,7 @@ impl<'a> SortKey<'a> {
             }
             _ => {
                 let name = column.name.as_str();
+                out.push_sql(prefix);
                 out.push_identifier(name)?;
             }
         }
@@ -2433,6 +2468,7 @@ impl<'a> SortKey<'a> {
             out.push_sql(" ");
             out.push_sql(direction);
             out.push_sql(", ");
+            out.push_sql(root_prefix);
             out.push_identifier(PRIMARY_KEY_COLUMN)?;
             out.push_sql(" ");
             out.push_sql(direction);
@@ -2475,6 +2511,7 @@ pub struct FilterQuery<'a> {
 
 impl<'a> FilterQuery<'a> {
     pub fn new(
+        layout: &'a Layout,
         collection: &'a FilterCollection,
         filter: Option<&'a EntityFilter>,
         order: EntityOrder,
@@ -2489,7 +2526,7 @@ impl<'a> FilterQuery<'a> {
         let first_table = collection
             .first_table()
             .expect("an entity query always contains at least one entity type/table");
-        let sort_key = SortKey::new(order, first_table, filter)?;
+        let sort_key = SortKey::new(order, layout, first_table, filter)?;
 
         Ok(FilterQuery {
             collection,
@@ -2560,7 +2597,9 @@ impl<'a> FilterQuery<'a> {
         write_column_names(&column_names, &table, &mut out)?;
         self.filtered_rows(table, filter, out.reborrow())?;
         out.push_sql("\n ");
-        self.sort_key.order_by(&mut out, Some("c."))?;
+        let join_table_collection = filter.as_ref().map(|f| &f.table_join_collection);
+        self.sort_key
+            .order_by(&mut out, Some("c."), join_table_collection)?;
         self.range.walk_ast(out.reborrow())?;
         out.push_sql(") c");
         Ok(())
@@ -2639,7 +2678,7 @@ impl<'a> FilterQuery<'a> {
             self.filtered_rows(table, filter, out.reborrow())?;
         }
         out.push_sql("\n ");
-        self.sort_key.order_by(&mut out, None)?;
+        self.sort_key.order_by(&mut out, None, None)?;
         self.range.walk_ast(out.reborrow())?;
 
         out.push_sql(")\n");
@@ -2661,7 +2700,7 @@ impl<'a> FilterQuery<'a> {
             out.push_bind_param::<Text, _>(&table.object.as_str())?;
         }
         out.push_sql("\n ");
-        self.sort_key.order_by(&mut out, None)?;
+        self.sort_key.order_by(&mut out, None, None)?;
         Ok(())
     }
 
@@ -2711,7 +2750,7 @@ impl<'a> FilterQuery<'a> {
             window.children_uniform(&self.sort_key, self.block, out.reborrow())?;
         }
         out.push_sql("\n");
-        self.sort_key.order_by(&mut out, None)?;
+        self.sort_key.order_by(&mut out, None, None)?;
         self.range.walk_ast(out.reborrow())?;
         out.push_sql(") c)\n");
 

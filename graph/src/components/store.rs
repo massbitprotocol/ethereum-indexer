@@ -199,9 +199,9 @@ impl EntityFilter {
 #[derive(Clone, Debug, PartialEq)]
 pub enum EntityOrder {
     /// Order ascending by the given attribute. Use `id` as a tie-breaker
-    Ascending(String, ValueType),
+    Ascending(String, ValueType, Option<EntityType>),
     /// Order descending by the given attribute. Use `id` as a tie-breaker
-    Descending(String, ValueType),
+    Descending(String, ValueType, Option<EntityType>),
     /// Order by the `id` of the entities
     Default,
     /// Do not order at all. This speeds up queries where we know that

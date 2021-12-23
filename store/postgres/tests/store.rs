@@ -564,12 +564,20 @@ trait EasyOrder {
 impl EasyOrder for EntityQuery {
     fn asc(self, attr: &str) -> Self {
         // The ValueType doesn't matter since relational layouts ignore it
-        self.order(EntityOrder::Ascending(attr.to_owned(), ValueType::String))
+        self.order(EntityOrder::Ascending(
+            attr.to_owned(),
+            ValueType::String,
+            None,
+        ))
     }
 
     fn desc(self, attr: &str) -> Self {
         // The ValueType doesn't matter since relational layouts ignore it
-        self.order(EntityOrder::Descending(attr.to_owned(), ValueType::String))
+        self.order(EntityOrder::Descending(
+            attr.to_owned(),
+            ValueType::String,
+            None,
+        ))
     }
 }
 
@@ -1647,16 +1655,22 @@ impl WindowQuery {
 
     fn asc(self, attr: &str) -> Self {
         WindowQuery(
-            self.0
-                .order(EntityOrder::Ascending(attr.to_owned(), ValueType::String)),
+            self.0.order(EntityOrder::Ascending(
+                attr.to_owned(),
+                ValueType::String,
+                None,
+            )),
             self.1,
         )
     }
 
     fn desc(self, attr: &str) -> Self {
         WindowQuery(
-            self.0
-                .order(EntityOrder::Descending(attr.to_owned(), ValueType::String)),
+            self.0.order(EntityOrder::Descending(
+                attr.to_owned(),
+                ValueType::String,
+                None,
+            )),
             self.1,
         )
     }

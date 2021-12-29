@@ -813,12 +813,37 @@ impl<'a> TableJoinCollection<'a> {
             Child(field_name, entity, child_filter) => {
                 let child_table = layout.table_for_entity(entity)?;
 
-                self.join(parent_table, child_table, field_name)?;
+                self.join(
+                    parent_table,
+                    child_table,
+                    parent_table.column_for_field(field_name)?,
+                );
                 self.extend_with_filter(child_filter, child_table, layout)?;
             }
             _ => {}
         }
         Ok(())
+    }
+
+    pub fn clone_from_sort_key(&self, sort_key: &'a SortKey, root_table: &'a Table) -> Self {
+        match sort_key {
+            SortKey::Key {
+                table,
+                column,
+                value: _,
+                direction: _,
+            } => {
+                // Table is a child of the root table, join them
+                if root_table.name != table.name {
+                    let mut tjc = self.clone();
+                    tjc.join(root_table, table, column);
+                    return tjc;
+                }
+            }
+            _ => {}
+        }
+
+        self.clone()
     }
 
     fn find(&self, parent_table: &'a Table, child_table: &'a Table) -> Option<&TableJoin> {
@@ -852,13 +877,8 @@ impl<'a> TableJoinCollection<'a> {
             .to_string()
     }
 
-    fn join(
-        &mut self,
-        parent_table: &'a Table,
-        child_table: &'a Table,
-        field_name: &String,
-    ) -> Result<(), StoreError> {
-        Ok(match self.find(parent_table, child_table) {
+    fn join(&mut self, parent_table: &'a Table, child_table: &'a Table, parent_column: &'a Column) {
+        match self.find(parent_table, child_table) {
             None => {
                 let parent_prefix = self.get_or_add_prefix(parent_table);
                 let child_prefix = self.get_or_add_prefix(child_table);
@@ -868,12 +888,12 @@ impl<'a> TableJoinCollection<'a> {
                     child: child_table,
                     parent_prefix,
                     child_prefix,
-                    parent_column: parent_table.column_for_field(field_name)?,
+                    parent_column,
                     child_column: child_table.primary_key(),
                 });
             }
             Some(_) => {}
-        })
+        }
     }
 }
 
@@ -2342,7 +2362,7 @@ impl<'a> SortKey<'a> {
         &self,
         out: &mut AstPass<Pg>,
         prefix: Option<&str>,
-        table_join_collection: Option<&TableJoinCollection>,
+        table_join_collection: Option<TableJoinCollection>,
     ) -> QueryResult<()> {
         let prefix = prefix.unwrap_or("");
 
@@ -2595,7 +2615,10 @@ impl<'a> FilterQuery<'a> {
         write_column_names(&column_names, &table, &mut out)?;
         self.filtered_rows(table, filter, out.reborrow())?;
         out.push_sql("\n ");
-        let join_table_collection = filter.as_ref().map(|f| &f.table_join_collection);
+        let join_table_collection = filter.as_ref().map(|f| {
+            f.table_join_collection
+                .clone_from_sort_key(&self.sort_key, table)
+        });
         self.sort_key
             .order_by(&mut out, Some("c."), join_table_collection)?;
         self.range.walk_ast(out.reborrow())?;

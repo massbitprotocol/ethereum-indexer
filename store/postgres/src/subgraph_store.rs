@@ -1299,13 +1299,11 @@ impl WritableStoreTrait for WritableStore {
         })
     }
 
-    async fn is_deployment_synced(&self) -> Result<bool, StoreError> {
-        self.retry_async("is_deployment_synced", || async {
+    fn is_deployment_synced(&self) -> Result<bool, StoreError> {
+        self.retry("is_deployment_synced", || {
             self.writable
                 .exists_and_synced(self.site.deployment.cheap_clone())
-                .await
         })
-        .await
     }
 
     fn unassign_subgraph(&self) -> Result<(), StoreError> {

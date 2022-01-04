@@ -131,6 +131,7 @@ pub mod prelude {
         SubgraphAssignmentProvider, SubgraphInstanceManager, SubgraphRegistrar,
         SubgraphVersionSwitchingMode,
     };
+    pub use crate::components::versions::{FeatureFlag, Version, VersionNumber};
     pub use crate::components::{transaction_receipt, EventConsumer, EventProducer};
 
     pub use crate::cheap_clone::CheapClone;

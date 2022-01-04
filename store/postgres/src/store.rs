@@ -57,6 +57,9 @@ impl QueryStoreManager for Store {
         Arc<dyn graph::prelude::QueryStore + Send + Sync>,
         graph::prelude::QueryExecutionError,
     > {
+        // here might be a good place to pass version
+        // We could pass it through Site that is created in store.replica_for_query
+        // Site could be created based on Target
         let store = self.subgraph_store.cheap_clone();
         let (store, site, replica) = graph::spawn_blocking_allow_panic(move || {
             store

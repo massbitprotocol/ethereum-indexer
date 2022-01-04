@@ -175,8 +175,12 @@ where
             GraphQLServerError::ClientError(format!("Invalid subgraph name {:?}", subgraph_name))
         })?;
 
-        self.handle_graphql_query(subgraph_name.into(), request.into_body())
-            .await
+        // Here, I need to call VersionNumber::validate()
+        self.handle_graphql_query(
+            QueryTarget::Name(subgraph_name, VersionNumber::default()),
+            request.into_body(),
+        )
+        .await
     }
 
     fn handle_graphql_query_by_id(
@@ -304,6 +308,7 @@ where
                 self.handle_temp_redirect(dest).boxed()
             }
 
+            // Here, I need to extract a version number from the path
             (Method::POST, &["subgraphs", "id", subgraph_id]) => {
                 self.handle_graphql_query_by_id(subgraph_id.to_owned(), req)
             }

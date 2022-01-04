@@ -75,7 +75,7 @@ impl TryFrom<&r::Value> for ErrorPolicy {
 /// The input schema should only have type/enum/interface/union definitions
 /// and must not include a root Query type. This Query type is derived, with
 /// all its fields and their input arguments, based on the existing types.
-pub fn api_schema(input_schema: &Document) -> Result<Document, APISchemaError> {
+pub fn api_schema(input_schema: &Document, version: &Version) -> Result<Document, APISchemaError> {
     // Refactor: Take `input_schema` by value.
     let object_types = input_schema.get_object_type_definitions();
     let interface_types = input_schema.get_interface_type_definitions();
@@ -86,7 +86,11 @@ pub fn api_schema(input_schema: &Document) -> Result<Document, APISchemaError> {
     add_builtin_scalar_types(&mut schema)?;
     add_order_direction_enum(&mut schema);
     add_block_height_type(&mut schema);
-    add_meta_field_type(&mut schema);
+
+    if version.supports(FeatureFlag::MetaField) {
+        add_meta_field_type(&mut schema);
+    }
+
     add_types_for_object_types(&mut schema, &object_types)?;
     add_types_for_interface_types(&mut schema, &interface_types)?;
     add_field_arguments(&mut schema, input_schema)?;

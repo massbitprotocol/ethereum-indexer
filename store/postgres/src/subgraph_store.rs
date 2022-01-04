@@ -24,7 +24,7 @@ use graph::{
         anyhow, futures03::future::join_all, lazy_static, o, web3::types::Address, ApiSchema,
         BlockPtr, DeploymentHash, Entity, EntityKey, EntityModification, Error, Logger, NodeId,
         Schema, StopwatchMetrics, StoreError, SubgraphName, SubgraphStore as SubgraphStoreTrait,
-        SubgraphVersionSwitchingMode,
+        SubgraphVersionSwitchingMode, Version,
     },
     slog::{error, warn},
     util::{backoff::ExponentialBackoff, timed_cache::TimedCache},
@@ -473,6 +473,7 @@ impl SubgraphStoreInner {
         #[cfg(not(debug_assertions))]
         assert!(!replace);
 
+        // Here's where Site is created
         let (site, node_id) = {
             // We need to deal with two situations:
             //   (1) We are really creating a new subgraph; it therefore needs
@@ -544,7 +545,7 @@ impl SubgraphStoreInner {
     ) -> Result<DeploymentLocator, StoreError> {
         let src = self.find_site(src.id.into())?;
         let src_store = self.for_site(src.as_ref())?;
-        let src_info = src_store.subgraph_info(src.as_ref())?;
+        let src_info = src_store.subgraph_info(src.as_ref(), &Default::default())?;
         let src_loc = DeploymentLocator::from(src.as_ref());
 
         let dst = Arc::new(self.primary_conn()?.copy_site(&src, shard.clone())?);
@@ -671,7 +672,7 @@ impl SubgraphStoreInner {
         for_subscription: bool,
     ) -> Result<(Arc<DeploymentStore>, Arc<Site>, ReplicaId), StoreError> {
         let id = match target {
-            QueryTarget::Name(name) => self.mirror.current_deployment_for_subgraph(&name)?,
+            QueryTarget::Name(name, _) => self.mirror.current_deployment_for_subgraph(&name)?,
             QueryTarget::Deployment(id) => id,
         };
 
@@ -850,7 +851,7 @@ impl SubgraphStoreInner {
                 .ok_or_else(|| constraint_violation!("no chain info for {}", deployment_id))?;
             let latest_ethereum_block_number =
                 chain.latest_block.as_ref().map(|ref block| block.number());
-            let subgraph_info = store.subgraph_info(site.as_ref())?;
+            let subgraph_info = store.subgraph_info(site.as_ref(), &Default::default())?;
             let network = site.network.clone();
 
             let info = VersionInfo {
@@ -1014,13 +1015,17 @@ impl SubgraphStoreTrait for SubgraphStore {
 
     fn input_schema(&self, id: &DeploymentHash) -> Result<Arc<Schema>, StoreError> {
         let (store, site) = self.store(&id)?;
-        let info = store.subgraph_info(site.as_ref())?;
+        let info = store.subgraph_info(site.as_ref(), &Default::default())?;
         Ok(info.input)
     }
 
-    fn api_schema(&self, id: &DeploymentHash) -> Result<Arc<ApiSchema>, StoreError> {
+    fn api_schema(
+        &self,
+        id: &DeploymentHash,
+        version: &Version,
+    ) -> Result<Arc<ApiSchema>, StoreError> {
         let (store, site) = self.store(&id)?;
-        let info = store.subgraph_info(&site)?;
+        let info = store.subgraph_info(&site, version)?;
         Ok(info.api)
     }
 

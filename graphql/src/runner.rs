@@ -13,7 +13,7 @@ use graph::{
     components::store::SubscriptionManager,
     prelude::{
         async_trait, o, CheapClone, DeploymentState, GraphQlRunner as GraphQlRunnerTrait, Logger,
-        Query, QueryExecutionError, Subscription, SubscriptionError, SubscriptionResult,
+        Query, QueryExecutionError, Subscription, SubscriptionError, SubscriptionResult, Version,
     },
 };
 use graph::{data::graphql::effort::LoadManager, prelude::QueryStoreManager};
@@ -193,10 +193,12 @@ where
         // while the query is running. `self.store` can not be used after this
         // point, and everything needs to go through the `store` we are
         // setting up here
-        let store = self.store.query_store(target, false).await?;
+
+        // Here, we run QueryStore::query_store on every request
+        let store = self.store.query_store(target.clone(), false).await?;
         let state = store.deployment_state().await?;
         let network = Some(store.network_name().to_string());
-        let schema = store.api_schema()?;
+        let schema = store.api_schema(&target.get_version())?;
 
         // Test only, see c435c25decbc4ad7bbbadf8e0ced0ff2
         #[cfg(debug_assertions)]
@@ -308,8 +310,8 @@ where
         subscription: Subscription,
         target: QueryTarget,
     ) -> Result<SubscriptionResult, SubscriptionError> {
-        let store = self.store.query_store(target, true).await?;
-        let schema = store.api_schema()?;
+        let store = self.store.query_store(target.clone(), true).await?;
+        let schema = store.api_schema(&target.get_version())?;
         let network = store.network_name().to_string();
 
         let query = crate::execution::Query::new(

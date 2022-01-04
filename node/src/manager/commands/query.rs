@@ -7,6 +7,7 @@ use graph::{
     prelude::{
         anyhow::{self, anyhow},
         serde_json, DeploymentHash, GraphQlRunner as _, Query, QueryVariables, SubgraphName,
+        VersionNumber,
     },
 };
 use graph_graphql::prelude::GraphQlRunner;
@@ -27,7 +28,7 @@ pub async fn run(
     } else {
         let name = SubgraphName::new(target.clone())
             .map_err(|()| anyhow!("illegal subgraph name `{}`", target))?;
-        QueryTarget::Name(name)
+        QueryTarget::Name(name, VersionNumber::default())
     };
 
     let document = graphql_parser::parse_query(&query)?.into_static();

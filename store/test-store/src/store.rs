@@ -387,7 +387,7 @@ async fn execute_subgraph_query_internal(
         QueryTarget::Deployment(id) => id,
         _ => unreachable!("tests do not use this"),
     };
-    let schema = SUBGRAPH_STORE.api_schema(&id).unwrap();
+    let schema = SUBGRAPH_STORE.api_schema(&id, &Default::default()).unwrap();
     let status = StatusStore::status(
         STORE.as_ref(),
         status::Filter::Deployments(vec![id.to_string()]),

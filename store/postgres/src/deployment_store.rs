@@ -7,6 +7,7 @@ use graph::components::store::{EntityType, StoredDynamicDataSource};
 use graph::data::subgraph::status;
 use graph::prelude::{
     tokio, CancelHandle, CancelToken, CancelableError, PoolWaitStats, SubgraphDeploymentEntity,
+    Version,
 };
 use lru_time_cache::LruCache;
 use rand::{seq::SliceRandom, thread_rng};
@@ -275,7 +276,9 @@ impl DeploymentStore {
         // if that's Fred the Dog, Fred the Cat or both.
         //
         // This assumes that there are no concurrent writes to a subgraph.
-        let schema = self.subgraph_info_with_conn(&conn, &layout.site)?.api;
+        let schema = self
+            .subgraph_info_with_conn(&conn, &layout.site, &Default::default())?
+            .api;
         let types_for_interface = schema.types_for_interface();
         let entity_type = key.entity_type.to_string();
         let types_with_shared_interface = Vec::from_iter(
@@ -554,6 +557,7 @@ impl DeploymentStore {
         &self,
         conn: &PgConnection,
         site: &Site,
+        version: &Version,
     ) -> Result<SubgraphInfo, StoreError> {
         if let Some(info) = self.subgraph_cache.lock().unwrap().get(&site.deployment) {
             return Ok(info.clone());
@@ -567,8 +571,9 @@ impl DeploymentStore {
         // Generate an API schema for the subgraph and make sure all types in the
         // API schema have a @subgraphId directive as well
         let mut schema = input_schema.clone();
+        // We need to pass here a version somehow
         schema.document =
-            api_schema(&schema.document).map_err(|e| StoreError::Unknown(e.into()))?;
+            api_schema(&schema.document, version).map_err(|e| StoreError::Unknown(e.into()))?;
         schema.add_subgraph_id_directives(site.deployment.clone());
 
         let info = SubgraphInfo {
@@ -586,13 +591,17 @@ impl DeploymentStore {
         Ok(cache.get(&site.deployment).unwrap().clone())
     }
 
-    pub(crate) fn subgraph_info(&self, site: &Site) -> Result<SubgraphInfo, StoreError> {
+    pub(crate) fn subgraph_info(
+        &self,
+        site: &Site,
+        version: &Version,
+    ) -> Result<SubgraphInfo, StoreError> {
         if let Some(info) = self.subgraph_cache.lock().unwrap().get(&site.deployment) {
             return Ok(info.clone());
         }
 
         let conn = self.get_conn()?;
-        self.subgraph_info_with_conn(&conn, site)
+        self.subgraph_info_with_conn(&conn, site, version)
     }
 
     fn block_ptr_with_conn(
@@ -923,7 +932,7 @@ impl DeploymentStore {
     ) -> Result<StoreEvent, StoreError> {
         let event = conn.transaction(|| -> Result<_, StoreError> {
             // Don't revert past a graft point
-            let info = self.subgraph_info_with_conn(&conn, site.as_ref())?;
+            let info = self.subgraph_info_with_conn(&conn, site.as_ref(), &Default::default())?;
             if let Some(graft_block) = info.graft_block {
                 if graft_block > block_ptr_to.number {
                     return Err(anyhow!(

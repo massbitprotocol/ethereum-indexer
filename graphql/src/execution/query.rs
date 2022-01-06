@@ -739,6 +739,7 @@ impl Transform {
 
         let resolver = |name: &str| self.schema.get_named_type(name);
 
+        let mut defined_args: usize = 0;
         for argument_def in sast::get_argument_definitions(ty, field_name)
             .into_iter()
             .flatten()
@@ -747,6 +748,9 @@ impl Transform {
                 .iter_mut()
                 .find(|arg| &arg.0 == &argument_def.name)
                 .map(|arg| &mut arg.1);
+            if arg_value.is_some() {
+                defined_args += 1;
+            }
             match coercion::coerce_input_value(
                 arg_value.as_deref().cloned(),
                 &argument_def,
@@ -765,6 +769,16 @@ impl Transform {
                 }
                 Ok(None) => {}
                 Err(e) => errors.push(e),
+            }
+        }
+
+        if defined_args < arguments.len() {
+            // `arguments` contains undefined arguments, remove them
+            match sast::get_argument_definitions(ty, field_name) {
+                None => arguments.clear(),
+                Some(arg_defs) => {
+                    arguments.retain(|(name, _)| arg_defs.iter().any(|def| &def.name == name))
+                }
             }
         }
 

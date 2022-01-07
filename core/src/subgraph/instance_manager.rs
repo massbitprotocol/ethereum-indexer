@@ -526,7 +526,7 @@ where
         loop {
             let (block, cursor) = match block_stream.next().await {
                 Some(Ok(BlockStreamEvent::ProcessBlock(block, cursor))) => (block, cursor),
-                Some(Ok(BlockStreamEvent::Revert(subgraph_ptr, cursor, parent_ptr))) => {
+                Some(Ok(BlockStreamEvent::Revert(subgraph_ptr, parent_ptr, cursor))) => {
                     info!(
                         logger,
                         "Reverting block to get back to main chain";
@@ -534,53 +534,23 @@ where
                         "block_hash" => format!("{}", subgraph_ptr.hash)
                     );
 
-                    // We would like to revert the DB state to the parent of the current block.
+                    if let Err(e) = ctx.inputs.store.revert_block_operations(parent_ptr) {
+                        error!(
+                            &logger,
+                            "Could not revert block. Retrying";
+                            "block_number" => format!("{}", subgraph_ptr.number),
+                            "block_hash" => format!("{}", subgraph_ptr.hash),
+                            "error" => e.to_string(),
+                        );
+                        break;
+                    }
+
                     if chain.is_firehose_supported() {
-                        let parent_ptr = parent_ptr.expect("Firehose enabled chain must provide the parent_ptr of the reverted block");
-
-                        if let Err(e) = ctx.inputs.store.revert_block_operations(parent_ptr) {
-                            error!(
-                                &logger,
-                                "Could not revert block. Retrying";
-                                "block_number" => format!("{}", subgraph_ptr.number),
-                                "block_hash" => format!("{}", subgraph_ptr.hash),
-                                "error" => e.to_string(),
-                            );
-                            break;
-                        }
-
                         let cursor = cursor.expect("Firehose enabled chain must provide a cursor");
                         if let Err(e) = ctx.inputs.store.update_block_cursor(cursor.as_ref()) {
                             error!(
                                 &logger,
                                 "Could not update cursor for reverted block. Retrying";
-                                "block_number" => format!("{}", subgraph_ptr.number),
-                                "block_hash" => format!("{}", subgraph_ptr.hash),
-                                "error" => e.to_string(),
-                            );
-                            break;
-                        }
-                    } else {
-                        // First, load the block in order to get the parent hash.
-                        if let Err(e) = ctx
-                            .inputs
-                            .triggers_adapter
-                            .parent_ptr(&subgraph_ptr)
-                            .await
-                            .map(|parent_ptr| parent_ptr.expect("genesis block cannot be reverted"))
-                            .and_then(|parent_ptr| {
-                                // Revert entity changes from this block, and update subgraph ptr.
-                                ctx.inputs
-                                    .store
-                                    .revert_block_operations(parent_ptr)
-                                    .map_err(Into::into)
-                            })
-                        {
-                            error!(
-                                &logger,
-                                "Could not revert block. \
-                                The likely cause is the block not being found due to a deep reorg. \
-                                Retrying";
                                 "block_number" => format!("{}", subgraph_ptr.number),
                                 "block_hash" => format!("{}", subgraph_ptr.hash),
                                 "error" => e.to_string(),

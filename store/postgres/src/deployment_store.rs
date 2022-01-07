@@ -693,6 +693,12 @@ impl DeploymentStore {
         )?)
     }
 
+    pub(crate) fn update_block_cursor(&self, site: &Site, cursor: &str) -> Result<(), StoreError> {
+        let conn = self.get_conn()?;
+
+        deployment::update_firehose_cursor(&conn, &site.deployment, cursor)
+    }
+
     pub(crate) async fn supports_proof_of_indexing<'a>(
         &self,
         site: Arc<Site>,

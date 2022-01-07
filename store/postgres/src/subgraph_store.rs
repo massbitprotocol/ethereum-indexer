@@ -1191,6 +1191,11 @@ impl WritableStoreTrait for WritableStore {
         self.writable.block_cursor(self.site.as_ref())
     }
 
+    fn update_block_cursor(&self, cursor: &str) -> Result<(), StoreError> {
+        self.writable
+            .update_block_cursor(self.site.as_ref(), cursor)
+    }
+
     fn start_subgraph_deployment(&self, logger: &Logger) -> Result<(), StoreError> {
         self.retry("start_subgraph_deployment", || {
             let store = &self.writable;

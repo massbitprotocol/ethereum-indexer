@@ -1,3 +1,4 @@
+use anyhow::Context;
 use detail::DeploymentDetail;
 use diesel::connection::SimpleConnection;
 use diesel::pg::PgConnection;
@@ -693,12 +694,6 @@ impl DeploymentStore {
         )?)
     }
 
-    pub(crate) fn update_block_cursor(&self, site: &Site, cursor: &str) -> Result<(), StoreError> {
-        let conn = self.get_conn()?;
-
-        deployment::update_firehose_cursor(&conn, &site.deployment, cursor)
-    }
-
     pub(crate) async fn supports_proof_of_indexing<'a>(
         &self,
         site: Arc<Site>,
@@ -926,6 +921,7 @@ impl DeploymentStore {
         conn: &PgConnection,
         site: Arc<Site>,
         block_ptr_to: BlockPtr,
+        cursor: Option<String>,
     ) -> Result<StoreEvent, StoreError> {
         let event = conn.transaction(|| -> Result<_, StoreError> {
             // Don't revert past a graft point
@@ -945,6 +941,11 @@ impl DeploymentStore {
             }
 
             deployment::revert_block_ptr(&conn, &site.deployment, block_ptr_to.clone())?;
+
+            if let Some(cursor) = cursor {
+                deployment::update_firehose_cursor(&conn, &site.deployment, cursor.as_ref())
+                    .context("updating firehose cursor")?;
+            }
 
             // Revert the data
             let layout = self.layout(&conn, site.clone())?;
@@ -983,6 +984,7 @@ impl DeploymentStore {
         &self,
         site: Arc<Site>,
         block_ptr_to: BlockPtr,
+        cursor: Option<String>,
     ) -> Result<StoreEvent, StoreError> {
         let conn = self.get_conn()?;
 
@@ -997,13 +999,15 @@ impl DeploymentStore {
                 block_ptr_to.number
             );
         }
-        self.rewind_with_conn(&conn, site, block_ptr_to)
+
+        self.rewind_with_conn(&conn, site, block_ptr_to, cursor)
     }
 
     pub(crate) fn revert_block_operations(
         &self,
         site: Arc<Site>,
         block_ptr_to: BlockPtr,
+        cursor: Option<String>,
     ) -> Result<StoreEvent, StoreError> {
         let conn = self.get_conn()?;
         // Unwrap: If we are reverting then the block ptr is not `None`.
@@ -1014,7 +1018,7 @@ impl DeploymentStore {
             panic!("revert_block_operations must revert a single block only");
         }
 
-        self.rewind_with_conn(&conn, site, block_ptr_to)
+        self.rewind_with_conn(&conn, site, block_ptr_to, cursor)
     }
 
     pub(crate) async fn deployment_state_from_id(
@@ -1233,7 +1237,7 @@ impl DeploymentStore {
                     );
 
                     // We ignore the StoreEvent that's being returned, we'll not use it.
-                    let _ = self.revert_block_operations(site.clone(), parent_ptr.clone())?;
+                    let _ = self.revert_block_operations(site.clone(), parent_ptr.clone(), None)?;
 
                     // Unfail the deployment.
                     deployment::update_deployment_status(conn, deployment_id, prev_health, None)?;

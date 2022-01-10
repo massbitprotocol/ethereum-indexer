@@ -534,7 +534,7 @@ where
                         "block_hash" => format!("{}", subgraph_ptr.hash)
                     );
 
-                    if let Err(e) = ctx.inputs.store.revert_block_operations(parent_ptr) {
+                    if let Err(e) = ctx.inputs.store.revert_block_operations(parent_ptr, cursor) {
                         error!(
                             &logger,
                             "Could not revert block. Retrying";
@@ -543,20 +543,6 @@ where
                             "error" => e.to_string(),
                         );
                         break;
-                    }
-
-                    if chain.is_firehose_supported() {
-                        let cursor = cursor.expect("Firehose enabled chain must provide a cursor");
-                        if let Err(e) = ctx.inputs.store.update_block_cursor(cursor.as_ref()) {
-                            error!(
-                                &logger,
-                                "Could not update cursor for reverted block. Retrying";
-                                "block_number" => format!("{}", subgraph_ptr.number),
-                                "block_hash" => format!("{}", subgraph_ptr.hash),
-                                "error" => e.to_string(),
-                            );
-                            break;
-                        }
                     }
 
                     ctx.block_stream_metrics

@@ -115,7 +115,7 @@ pub fn run(
     println!("\nRewinding deployments");
     for deployment in &deployments {
         let loc = deployment.locator();
-        subgraph_store.rewind(loc.hash.clone(), block_ptr_to.clone())?;
+        subgraph_store.rewind(loc.hash.clone(), block_ptr_to.clone(), None)?;
         println!("  ... rewound {}", loc);
     }
 

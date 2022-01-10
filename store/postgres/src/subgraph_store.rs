@@ -896,9 +896,14 @@ impl SubgraphStoreInner {
         join_all(self.stores.values().map(|store| store.vacuum())).await
     }
 
-    pub fn rewind(&self, id: DeploymentHash, block_ptr_to: BlockPtr) -> Result<(), StoreError> {
+    pub fn rewind(
+        &self,
+        id: DeploymentHash,
+        block_ptr_to: BlockPtr,
+        cursor: Option<String>,
+    ) -> Result<(), StoreError> {
         let (store, site) = self.store(&id)?;
-        let event = store.rewind(site, block_ptr_to)?;
+        let event = store.rewind(site, block_ptr_to, cursor)?;
         self.send_store_event(&event)
     }
 
@@ -1191,11 +1196,6 @@ impl WritableStoreTrait for WritableStore {
         self.writable.block_cursor(self.site.as_ref())
     }
 
-    fn update_block_cursor(&self, cursor: &str) -> Result<(), StoreError> {
-        self.writable
-            .update_block_cursor(self.site.as_ref(), cursor)
-    }
-
     fn start_subgraph_deployment(&self, logger: &Logger) -> Result<(), StoreError> {
         self.retry("start_subgraph_deployment", || {
             let store = &self.writable;
@@ -1212,11 +1212,17 @@ impl WritableStoreTrait for WritableStore {
         })
     }
 
-    fn revert_block_operations(&self, block_ptr_to: BlockPtr) -> Result<(), StoreError> {
+    fn revert_block_operations(
+        &self,
+        block_ptr_to: BlockPtr,
+        cursor: Option<String>,
+    ) -> Result<(), StoreError> {
         self.retry("revert_block_operations", || {
-            let event = self
-                .writable
-                .revert_block_operations(self.site.clone(), block_ptr_to.clone())?;
+            let event = self.writable.revert_block_operations(
+                self.site.clone(),
+                block_ptr_to.clone(),
+                cursor.clone(),
+            )?;
             self.try_send_store_event(event)
         })
     }

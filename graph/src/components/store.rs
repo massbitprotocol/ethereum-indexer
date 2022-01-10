@@ -1014,9 +1014,6 @@ pub trait WritableStore: Send + Sync + 'static {
     /// is used when re-connecting a Firehose stream to start back exactly where we left off.
     fn block_cursor(&self) -> Result<Option<String>, StoreError>;
 
-    /// Updates the Firehose `cursor` this deployment is currently at.
-    fn update_block_cursor(&self, cursor: &str) -> Result<(), StoreError>;
-
     /// Start an existing subgraph deployment.
     fn start_subgraph_deployment(&self, logger: &Logger) -> Result<(), StoreError>;
 
@@ -1024,7 +1021,11 @@ pub trait WritableStore: Send + Sync + 'static {
     /// subgraph block pointer to `block_ptr_to`.
     ///
     /// `block_ptr_to` must point to the parent block of the subgraph block pointer.
-    fn revert_block_operations(&self, block_ptr_to: BlockPtr) -> Result<(), StoreError>;
+    fn revert_block_operations(
+        &self,
+        block_ptr_to: BlockPtr,
+        firehose_cursor: Option<String>,
+    ) -> Result<(), StoreError>;
 
     /// If a deterministic error happened, this function reverts the block operations from the
     /// current block to the previous block.
@@ -1210,15 +1211,11 @@ impl WritableStore for MockStore {
         unimplemented!()
     }
 
-    fn update_block_cursor(&self, _: &str) -> Result<(), StoreError> {
-        unimplemented!()
-    }
-
     fn start_subgraph_deployment(&self, _: &Logger) -> Result<(), StoreError> {
         unimplemented!()
     }
 
-    fn revert_block_operations(&self, _: BlockPtr) -> Result<(), StoreError> {
+    fn revert_block_operations(&self, _: BlockPtr, _: Option<String>) -> Result<(), StoreError> {
         unimplemented!()
     }
 
